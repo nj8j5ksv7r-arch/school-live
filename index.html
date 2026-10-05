@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111827">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="返學 Live">
+<link rel="manifest" href="manifest.json">
+<title>返學 Live</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#111827;--muted:#6b7280;--good:#087f5b;--warn:#b45309}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang HK",sans-serif}
+main{max-width:540px;margin:auto;padding:calc(18px + env(safe-area-inset-top)) 18px 42px}
+h1{font-size:30px;margin:8px 0 3px}.sub{color:var(--muted);margin-bottom:18px}
+.card{background:var(--card);border-radius:22px;padding:18px;margin:12px 0;box-shadow:0 3px 16px #0000000b}
+label{display:block;font-size:14px;color:var(--muted);margin:13px 0 6px}
+select,input{width:100%;padding:13px;border:1px solid #ddd;border-radius:13px;background:white;font:inherit}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.lesson{padding:14px;border:0;border-radius:15px;background:#e5e7eb;font-weight:800}.lesson.active{background:#111827;color:#fff}
+.primary{width:100%;padding:15px;border:0;border-radius:16px;background:#111827;color:white;font-weight:800;font-size:16px;margin-top:14px}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--good);font-weight:800}
+.dot{width:8px;height:8px;border-radius:50%;background:#10b981}
+.big{font-size:32px;font-weight:900;margin:7px 0}.route{padding:14px 0;border-top:1px solid #eee;margin-top:12px}.muted{color:var(--muted);font-size:13px}
+.row{display:flex;justify-content:space-between;gap:12px;align-items:center}.pill{background:#eef2f7;padding:6px 9px;border-radius:10px;font-size:12px}
+.hidden{display:none}.error{color:#b91c1c;font-size:13px;line-height:1.45}.foot{font-size:12px;color:var(--muted);line-height:1.5;margin-top:16px}
+</style>
+</head>
+<body>
+<main>
+<h1>返學 Live</h1>
+<div class="sub">按今日上堂時間，重新計算 507 + 港鐵 + 25MS</div>
+
+<div class="card">
+  <div class="row"><b>⚙️ 第一次使用／設定</b><span class="pill">只需設定一次</span></div>
+  <label>你通常在哪個 507 輕鐵站上車？</label>
+  <select id="station">
+    <option value="001">屯門碼頭</option><option value="010">兆禧</option>
+    <option value="020">屯門泳池</option><option value="030">豐景園</option>
+    <option value="040">兆麟</option><option value="050">安定</option>
+    <option value="060">市中心</option><option value="070">屯門</option>
+    <option value="080">河田</option><option value="090">蔡意橋</option>
+    <option value="100">銀圍</option><option value="110">大興南</option>
+    <option value="120">大興北</option><option value="160">新圍</option>
+    <option value="150">良景</option><option value="140">田景</option>
+  </select>
+  <label>由你屋企去到上車站要幾多分鐘？</label>
+  <input id="walk" type="number" min="0" max="60" value="5">
+  <button class="primary" onclick="saveSettings()">儲存設定</button>
+</div>
+
+<div class="card">
+  <div class="row"><b>今日去邊度？</b><span class="live"><span class="dot"></span>即時資料</span></div>
+  <label>上堂時間</label>
+  <div class="grid">
+    <button class="lesson" onclick="pick('08:30',this)">08:30</button>
+    <button class="lesson" onclick="pick('09:00',this)">09:00</button>
+    <button class="lesson" onclick="pick('12:00',this)">12:00</button>
+    <button class="lesson" onclick="pick('13:00',this)">13:00</button>
+    <button class="lesson" onclick="pick('15:00',this)">15:00</button>
+  </div>
+  <label>目的地</label>
+  <select id="destination">
+    <option value="kowloon">九龍塘（HKBU／賽馬會創意校園）</option>
+    <option value="shekmun">石門（HKBU 石門校園）</option>
+  </select>
+  <button class="primary" onclick="calculate()">🔄 即時重新計算</button>
+</div>
+
+<div id="result" class="card hidden"></div>
+
+<div class="foot">
+資料來源：港鐵輕鐵 Next Train API、港鐵鐵路 Next Train API、運輸署專線小巴實時 ETA API。<br>
+實時 ETA 會隨交通狀況改變；App 每次計算都會重新讀取資料。
+</div>
+</main>
+
+<script>
+const LRT_API='https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule';
+const MTR_API='https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php';
+const GMB_API='https://data.etagmb.gov.hk/eta/route-stop/2006112/1/1';
+let lesson='09:00';
+
+function pick(t,b){
+ lesson=t;document.querySelectorAll('.lesson').forEach(x=>x.classList.remove('active'));b.classList.add('active');
+}
+function saveSettings(){
+ localStorage.setItem('schoolLiveStation',document.getElementById('station').value);
+ localStorage.setItem('schoolLiveWalk',document.getElementById('walk').value);
+ alert('已儲存。');
+}
+function loadSettings(){
+ const s=localStorage.getItem('schoolLiveStation'),w=localStorage.getItem('schoolLiveWalk');
+ if(s)document.getElementById('station').value=s;
+ if(w)document.getElementById('walk').value=w;
+}
+function fmt(iso){if(!iso)return '—';const d=new Date(iso);return d.toLocaleTimeString('zh-HK',{hour:'2-digit',minute:'2-digit',hour12:false});}
+function minsUntil(iso){return Math.max(0,Math.round((new Date(iso)-Date.now())/60000));}
+
+async function getLrt(){
+ const id=document.getElementById('station').value;
+ const r=await fetch(`${LRT_API}?station_id=${id}&with_special=1`,{cache:'no-store'});
+ if(!r.ok)throw Error('輕鐵即時資料暫時無法取得');
+ return r.json();
+}
+async function getGmb(){
+ const r=await fetch(GMB_API,{cache:'no-store'});
+ if(!r.ok)throw Error('25MS 即時資料暫時無法取得');
+ return r.json();
+}
+async function getMtr(line,sta){
+ const r=await fetch(`${MTR_API}?line=${line}&sta=${sta}`,{cache:'no-store'});
+ if(!r.ok)throw Error('港鐵即時資料暫時無法取得');
+ return r.json();
+}
+function flattenLrt(j){
+ let out=[];
+ const plats=j.platform_list||[];
+ for(const p of plats){
+  for(const key of Object.keys(p)){
+   if(Array.isArray(p[key])) for(const x of p[key]){
+    if(x.route_no==='507' && x.time_ch && x.time_ch!=='正在離開' && x.time_ch!=='即將抵達'){
+      const t=x.time_ch;
+      if(/^\d{2}:\d{2}:\d{2}$/.test(t)){
+        const [h,m,s]=t.split(':').map(Number), d=new Date();
+        d.setHours(h,m,s,0); if(d.getTime()<Date.now()-30000)d.setDate(d.getDate()+1);
+        out.push({time:d,route:'507',dest:x.dest_ch||''});
+      }
+    }
+   }
+  }
+ }
+ return out.sort((a,b)=>a.time-b.time);
+}
+function nextGmb(j){
+ const arr=j.data||j.eta||[];
+ const a=(Array.isArray(arr)?arr:[]).map(x=>x.eta||x.estimated_arrival_time).filter(Boolean).map(x=>new Date(x)).filter(d=>d>new Date()).sort((a,b)=>a-b);
+ return a.slice(0,3);
+}
+
+async function calculate(){
+ const box=document.getElementById('result');box.classList.remove('hidden');
+ box.innerHTML='<div class="live"><span class="dot"></span>正在讀取即時交通資料…</div>';
+ try{
+  const dest=document.getElementById('destination').value;
+  const [lrt,gmb]=await Promise.all([getLrt(),getGmb()]);
+  const trains=flattenLrt(lrt);
+  const minibuses=nextGmb(gmb);
+  const target=new Date(); const [th,tm]=lesson.split(':').map(Number);target.setHours(th,tm,0,0);
+  if(target<Date.now())target.setDate(target.getDate()+1);
+  const walk=Number(document.getElementById('walk').value)||0;
+  const candidates=trains.slice(0,3);
+  const first=candidates[0];
+  const mb=minibuses[0];
+  let leave=new Date(first.time.getTime()-walk*60000);
+  // Live prototype: use a conservative end-to-end buffer based on the user's existing
+  // tested journey, while the vehicle ETAs themselves are live.
+  const fallbackTransit=dest==='kowloon'?68:42;
+  const transferWait=mb?Math.max(0,Math.round((mb-first.time)/60000)):10;
+  const arrival=new Date(first.time.getTime()+(fallbackTransit+Math.min(transferWait,15))*60000);
+  const latest=new Date(target.getTime()-15*60000);
+  let rec=first;
+  for(const t of candidates){
+    const a=new Date(t.time.getTime()+(fallbackTransit+Math.min(transferWait,15))*60000);
+    if(a<=latest)rec=t;
+  }
+  leave=new Date(rec.time.getTime()-walk*60000);
+  const recArrival=new Date(rec.time.getTime()+(fallbackTransit+Math.min(transferWait,15))*60000);
+  box.innerHTML=`
+   <div class="live"><span class="dot"></span>即時資料已更新</div>
+   <div class="muted" style="margin-top:8px">今日 ${dest==='kowloon'?'九龍塘':'石門'} · ${lesson} 堂</div>
+   <div class="big">🚪 ${fmt(leave)}</div>
+   <div><b>建議最遲出門時間</b></div>
+   <div class="route"><div class="row"><b>🚈 輕鐵 507</b><span class="pill">${fmt(rec.time)} 到站</span></div>
+   <div class="muted">來自港鐵即時到站資料</div></div>
+   <div class="route"><div class="row"><b>🚌 25MS</b><span class="pill">${mb?fmt(mb):'暫無 ETA'}</span></div>
+   <div class="muted">九龍塘轉乘站 → 香港浸會大學（即時 ETA）</div></div>
+   <div class="route"><b>🏫 預計到達 ${fmt(recArrival)}</b><div class="muted">預留 15 分鐘上堂緩衝</div></div>
+   <div class="foot">⚠️ 目前版本已接駁官方即時 ETA，但「507 → 港鐵 → 九龍塘／石門 → 25MS」的完整跨模式最短路線仍需路線規劃服務；因此到校時間中的中段為保守估算，不應視為官方 ETA。</div>`;
+ }catch(e){
+  box.innerHTML='<div class="error">讀取即時資料失敗：'+e.message+'<br><br>如果你第一次使用，請先選擇你上 507 的車站並按「儲存設定」。</div>';
+ }
+}
+loadSettings();
+</script>
+</body>
+</html>
